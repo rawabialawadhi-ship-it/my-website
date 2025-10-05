@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OceanSafe AI — New Ocean Route</title>
+  <link rel="icon" type="image/png" href="logo2.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { display:none; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="./">
+      <img src="logo2.png" alt="OceanSafe AI Logo" class="logo" />
+      <div class="brand-text">
+        <span>OceanSafe AI</span>
+        <small class="tag">New Ocean-Only Route (NASA GIBS)</small>
+      </div>
+    </a>
+    <div class="route-form">
+      <div class="kv" style="gap:10px">
+        <div><span>Distance:</span> <strong id="r-dist">—</strong></div>
+        <div><span>ETA:</span> <strong id="r-eta">—</strong></div>
+        <div><span>Fuel used:</span> <strong id="r-fuel">—</strong></div>
+        <div><span>Fuel remaining:</span> <strong id="r-fuel-left">—</strong></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="map-overlay">
+        <div class="pill" id="pill-info">AI ocean route</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <small>Imagery © NASA GIBS / Worldview.</small>
+  </footer>
+
+  <script type="module">
+    import L from "https://cdn.skypack.dev/leaflet@1.9.4";
+
+    const map = L.map("map", {
+      worldCopyJump: true, zoomControl: true, center: [26, 51], zoom: 5, minZoom: 2, maxZoom: 9
+    });
+
+    // Panes
+    map.createPane('gibs-base');   map.getPane('gibs-base').style.zIndex = 200;
+    map.createPane('gibs-coast');  map.getPane('gibs-coast').style.zIndex = 320;
+    map.createPane('gibs-feat');   map.getPane('gibs-feat').style.zIndex = 340;
+    map.createPane('gibs-labels'); map.getPane('gibs-labels').style.zIndex = 360;
+
+    const GIBS_SUB = ["a","b","c"];
+    const GIBS_TM = "GoogleMapsCompatible_Level9";
+    function gibsDateUTCMinus(days=1){ const d=new Date(); d.setUTCDate(d.getUTCDate()-days);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; }
+    const GIBS_TIME = gibsDateUTCMinus(1);
+
+    L.tileLayer(
+      `https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/${GIBS_TIME}/${GIBS_TM}/{z}/{y}/{x}.jpg`,
+      { subdomains:GIBS_SUB, tileSize:256, maxZoom:9, pane:'gibs-base', attribution:"Imagery © NASA GIBS", noWrap:true }
+    ).addTo(map);
+
+    L.tileLayer(
+      `https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/Coastlines/default/${GIBS_TIME}/${GIBS_TM}/{z}/{y}/{x}.png`,
+      { subdomains:GIBS_SUB, tileSize:256, maxZoom:9, pane:'gibs-coast', noWrap:true }
+    ).addTo(map);
+
+    L.tileLayer(
+      `https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/Reference_Features/default/${GIBS_TIME}/${GIBS_TM}/{z}/{y}/{x}.png`,
+      { subdomains:GIBS_SUB, tileSize:256, maxZoom:9, pane:'gibs-feat', noWrap:true }
+    ).addTo(map);
+
+    L.tileLayer(
+      `https://gibs-{s}.earthdata.nasa.gov/wmts/epsg3857/best/Reference_Labels/default/${GIBS_TIME}/${GIBS_TM}/{z}/{y}/{x}.png`,
+      { subdomains:GIBS_SUB, tileSize:256, maxZoom:9, pane:'gibs-labels', noWrap:true }
+    ).addTo(map);
+
+    const routeLayer = L.layerGroup({ pane:'route' }).addTo(map);
+
+    const path  = JSON.parse(sessionStorage.getItem("ai_path")  || "null");
+    const stats = JSON.parse(sessionStorage.getItem("ai_stats") || "null");
+
+    const rDist = document.getElementById("r-dist");
+    const rEta  = document.getElementById("r-eta");
+    const rFuel = document.getElementById("r-fuel");
+    const rFuelLeft = document.getElementById("r-fuel-left");
+
+    if(path && path.length){
+      const poly = L.polyline(path.map(([a,b])=>L.latLng(a,b)), {
+        color:"#2ae6b1", weight:6, opacity:.9, lineCap:'round', lineJoin:'round'
+      });
+      poly.addTo(routeLayer);
+      L.circleMarker(L.latLng(path[0][0], path[0][1]), { radius:6,color:"#fff",fillColor:"#2ad2ff",fillOpacity:1}).addTo(routeLayer).bindPopup("Origin");
+      L.circleMarker(L.latLng(path.at(-1)[0], path.at(-1)[1]), { radius:6,color:"#fff",fillColor:"#ffd166",fillOpacity:1}).addTo(routeLayer).bindPopup("Destination");
+      map.fitBounds(poly.getBounds(), { padding:[20,20] });
+    }
+
+    if(stats){
+      rDist.textContent = `${Math.round(stats.distKm).toLocaleString()} km`;
+      rEta.textContent  = stats.etaText;
+      rFuel.textContent = `${stats.fuelUsedKg.toLocaleString()} kg`;
+      rFuelLeft.textContent = `${stats.fuelLeftKg.toLocaleString()} kg`;
+    }
+  </script>
+</body>
+</html>

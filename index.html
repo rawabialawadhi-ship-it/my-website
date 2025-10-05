@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>waveGuard</title>
+  <link rel="icon" type="image/png" href="logo2.png" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="./">
+      <img src="logo2.png" alt="waveGuard Logo" class="logo" />
+      <div class="brand-text">
+        <span>waveGuard</span>
+        <small class="tag">NASA Worldview (GIBS) • Ocean-Only Routing</small>
+      </div>
+    </a>
+
+    <form id="route-form" class="route-form" autocomplete="off">
+      <div class="inputs">
+        <label class="f">
+          <span>From</span>
+          <input id="from-input" list="ports-list" type="text"
+                 placeholder="e.g., 29.37,47.93 or paste Worldview URL" required />
+        </label>
+
+        <button type="button" id="swap-btn" class="btn icon" title="Swap">⇅</button>
+
+        <label class="f">
+          <span>To</span>
+          <input id="to-input" list="ports-list" type="text"
+                 placeholder="e.g., 25.29,51.54 or paste Worldview URL" required />
+        </label>
+
+        <label class="f small">
+          <span>Ship size</span>
+          <select id="ship-size">
+            <option value="small">Small</option>
+            <option value="medium" selected>Medium</option>
+            <option value="large">Large</option>
+          </select>
+        </label>
+
+        <label class="f small">
+          <span>Fuel tank (tons)</span>
+          <input id="fuel-tank" type="number" min="1" step="1" value="3000" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">Route</button>
+        <button type="button" id="btn-ai" class="btn">AI Recalculate</button>
+      </div>
+
+      <!-- Gulf & nearby ports (datalist suggestions) -->
+      <datalist id="ports-list">
+        <option>Port of Shuwaikh, Kuwait</option>
+        <option>Port of Shuaiba, Kuwait</option>
+        <option>Umm Qasr, Iraq</option>
+        <option>Bushehr, Iran</option>
+        <option>Bandar Abbas, Iran</option>
+        <option>Port of Doha, Qatar</option>
+        <option>Ras Laffan, Qatar</option>
+        <option>King Abdulaziz Port Dammam, Saudi Arabia</option>
+        <option>Jubail, Saudi Arabia</option>
+        <option>Ras Tanura, Saudi Arabia</option>
+        <option>Khalifa Bin Salman, Bahrain</option>
+        <option>Mina Salman, Bahrain</option>
+        <option>Jebel Ali, United Arab Emirates</option>
+        <option>Khalifa Port, United Arab Emirates</option>
+        <option>Fujairah, United Arab Emirates</option>
+        <option>Khor Fakkan, United Arab Emirates</option>
+        <option>Sohar, Oman</option>
+        <option>Muscat, Oman</option>
+        <option>Port of Singapore, Singapore</option>
+        <option>Port of Rotterdam, Netherlands</option>
+        <option>Port of Antwerp, Belgium</option>
+      </datalist>
+    </form>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card">
+        <h2>Status</h2>
+        <ul class="kv">
+          <li><span>Vessel:</span><strong id="status-vessel">MV Demo</strong></li>
+          <li><span>ETA:</span><strong id="status-eta">—</strong></li>
+          <li><span>Distance:</span><strong id="status-distance">—</strong></li>
+          <li><span>Fuel used:</span><strong id="status-fuel">—</strong></li>
+          <li><span>Fuel remaining:</span><strong id="status-fuel-left">—</strong></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Hazards</h2>
+        <div id="hazard-list" class="hazard-list empty">No hazards loaded.</div>
+        <div class="legend">
+          <span class="dot wave"></span> High waves
+          <span class="dot storm"></span> Storm cell
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Layers</h2>
+        <label class="toggle">
+          <input id="layer-gibs" type="checkbox" checked />
+          <span>VIIRS True Color (Corrected Reflectance)</span>
+        </label>
+        <label class="toggle">
+          <input id="layer-coast" type="checkbox" checked />
+          <span>Coastlines</span>
+        </label>
+        <label class="toggle">
+          <input id="layer-feat" type="checkbox" checked />
+          <span>Borders & Reference Features</span>
+        </label>
+        <label class="toggle">
+          <input id="layer-labels" type="checkbox" checked />
+          <span>Place Labels</span>
+        </label>
+        <small class="hint">Imagery via NASA Worldview / GIBS WMTS.</small>
+      </section>
+    </aside>
+
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="map-overlay">
+        <div class="pill" id="pill-info">Ready.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <small>Imagery © NASA GIBS; Routing is ocean-only with strong coast buffer.</small>
+  </footer>
+
+  <!-- Risk Modal -->
+  <dialog id="risk-modal" class="modal">
+    <form method="dialog" class="modal-inner">
+      <header>
+        <img src="logo2.png" alt="Logo" class="logo-sm" />
+        <h3>Risk Detected on Route</h3>
+      </header>
+      <div class="modal-body">
+        <p id="risk-summary">A weather risk intersects your planned route.</p>
+        <ul class="kv">
+          <li><span>Nearest risk distance:</span><strong id="risk-distance">—</strong></li>
+          <li><span>Risk level:</span><strong id="risk-percent">—</strong></li>
+          <li><span>Type:</span><strong id="risk-type">—</strong></li>
+        </ul>
+        <p id="gpt-addendum" class="muted"></p>
+      </div>
+      <footer class="modal-actions">
+        <button value="close" class="btn">Close</button>
+        <button id="btn-open-reroute" class="btn primary" value="default">Open New Route Page</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- App + AI Worker -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
